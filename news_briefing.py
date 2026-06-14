@@ -27,10 +27,18 @@ YESTERDAY = NOW_KST - timedelta(hours=24)
 # ═══════════════════════════════════════
 
 def fetch_rss(url: str, label: str) -> list[dict]:
-    """RSS 피드에서 최근 24시간 기사 수집"""
+    """RSS 피드에서 최근 24시간 기사 수집 (User-Agent 설정)"""
     articles = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    }
     try:
-        feed = feedparser.parse(url)
+        resp = requests.get(url, headers=headers, timeout=15)
+        if resp.status_code != 200:
+            print(f"  [RSS 경고] {label}: HTTP {resp.status_code}")
+            return articles
+        feed = feedparser.parse(resp.content)
         for entry in feed.entries[:20]:
             published = None
             if hasattr(entry, "published_parsed") and entry.published_parsed:
@@ -53,7 +61,7 @@ def fetch_rss(url: str, label: str) -> list[dict]:
     return articles
 
 
-def fetch_newsapi(category: str = None, country: str = "kr", query: str = None) -> list[dict]:
+def fetch_newsapi(category: str = None, country: str = "kr", query: str = None, language: str = None) -> list[dict]:
     """NewsAPI에서 헤드라인 수집"""
     articles = []
     try:
@@ -63,7 +71,8 @@ def fetch_newsapi(category: str = None, country: str = "kr", query: str = None) 
             params["q"] = query
             params["from"] = YESTERDAY.strftime("%Y-%m-%d")
             params["sortBy"] = "relevancy"
-            params["language"] = "ko"
+            if language:
+                params["language"] = language
         else:
             url = "https://newsapi.org/v2/top-headlines"
             params["country"] = country
@@ -92,6 +101,11 @@ def collect_all_news() -> dict:
     rss_feeds = [
         # 한국 종합
         ("https://www.yonhapnewstv.co.kr/browse/feed/", "연합뉴스TV"),
+        # 글로벌 종합
+        ("https://feeds.bbci.co.uk/news/world/rss.xml", "BBC World"),
+        ("https://feeds.nbcnews.com/nbcnews/public/news/world", "NBC News World"),
+        ("https://www3.nhk.or.jp/nhkworld/en/news/list/rss.xml", "NHK World"),
+        ("https://rss.nytimes.com/services/xml/rss/nyt/World.xml", "NYT World"),
         # 기술/AI
         ("https://feeds.feedburner.com/haborymag", "GeekNews"),
         ("https://techcrunch.com/feed/", "TechCrunch"),
@@ -113,13 +127,18 @@ def collect_all_news() -> dict:
     }
 
     # RSS 수집
+    TECH_SOURCES = {"GeekNews", "TechCrunch", "Ars Technica"}
+    GAME_SOURCES = {"GamesIndustry.biz", "Game Developer", "게임메카", "인벤", "Steam New Releases"}
+    KR_SOURCES = {"연합뉴스TV"}
+    # 나머지는 자동으로 글로벌_종합
+
     for url, label in rss_feeds:
         articles = fetch_rss(url, label)
-        if label in ("GeekNews", "TechCrunch", "Ars Technica"):
+        if label in TECH_SOURCES:
             news["기술_AI"].extend(articles)
-        elif label in ("GamesIndustry.biz", "Game Developer", "게임메카", "인벤", "Steam New Releases"):
+        elif label in GAME_SOURCES:
             news["게임"].extend(articles)
-        elif label == "연합뉴스TV":
+        elif label in KR_SOURCES:
             news["한국_종합"].extend(articles)
         else:
             news["글로벌_종합"].extend(articles)
@@ -130,9 +149,9 @@ def collect_all_news() -> dict:
     news["경제"].extend(fetch_newsapi(category="business", country="kr"))
     news["경제"].extend(fetch_newsapi(category="business", country="us"))
     news["기술_AI"].extend(fetch_newsapi(category="technology"))
-    news["기술_AI"].extend(fetch_newsapi(query="AI OR OpenAI OR NVIDIA OR Anthropic OR Google AI"))
-    news["게임"].extend(fetch_newsapi(query="게임 출시 OR 게임 업데이트 OR e스포츠"))
-    news["게임"].extend(fetch_newsapi(query="game release OR Steam OR PlayStation OR Nintendo OR Xbox", country="us"))
+    news["기술_AI"].extend(fetch_newsapi(query="AI OR OpenAI OR NVIDIA OR Anthropic OR Google AI", language="en"))
+    news["게임"].extend(fetch_newsapi(query="게임 출시 OR 게임 업데이트 OR e스포츠 OR 게임 신작", language="ko"))
+    news["게임"].extend(fetch_newsapi(query="video game OR game release OR Steam OR PlayStation OR Nintendo OR Xbox OR Unreal Engine OR Unity game", language="en"))
 
     # 중복 제거
     for key in news:
