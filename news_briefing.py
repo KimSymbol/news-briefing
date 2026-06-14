@@ -216,24 +216,33 @@ def summarize_with_gemini(news: dict) -> str:
 
     client = genai.Client(api_key=GEMINI_API_KEY)
 
-    for model_name in MODELS:
-        try:
-            print(f"  모델 시도: {model_name}")
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-            )
-            print(f"  ✅ 성공: {model_name}")
-            return response.text
-        except Exception as e:
-            error_msg = str(e)
-            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-                print(f"  ❌ {model_name}: 할당량 초과, 다음 모델 시도...")
-                continue
-            else:
-                raise
+    import time
+    RETRYABLE = ["429", "503", "500", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "INTERNAL"]
 
-    raise RuntimeError("모든 Gemini 모델이 할당량 초과 상태입니다.")
+    for model_name in MODELS:
+        for attempt in range(2):  # 각 모델당 최대 2번 시도
+            try:
+                print(f"  모델 시도: {model_name} (시도 {attempt + 1}/2)")
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                )
+                print(f"  ✅ 성공: {model_name}")
+                return response.text
+            except Exception as e:
+                error_msg = str(e)
+                is_retryable = any(code in error_msg for code in RETRYABLE)
+                if is_retryable and attempt == 0:
+                    print(f"  ⏳ {model_name}: 일시적 오류, 20초 후 재시도...")
+                    time.sleep(20)
+                    continue
+                elif is_retryable:
+                    print(f"  ❌ {model_name}: 실패, 다음 모델로...")
+                    break
+                else:
+                    raise
+
+    raise RuntimeError("모든 Gemini 모델 시도 실패. API 상태를 확인하세요.")
 
 
 # ─── 3. 디스코드 전송 ───
