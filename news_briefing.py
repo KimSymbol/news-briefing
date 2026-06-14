@@ -206,13 +206,34 @@ def summarize_with_gemini(news: dict) -> str:
 {news_text}
 """
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt,
-    )
+    # 무료 모델 우선순위 — Google이 변경해도 다음 모델로 자동 시도
+    MODELS = [
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+        "gemini-1.5-flash",
+    ]
 
-    return response.text
+    client = genai.Client(api_key=GEMINI_API_KEY)
+
+    for model_name in MODELS:
+        try:
+            print(f"  모델 시도: {model_name}")
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+            )
+            print(f"  ✅ 성공: {model_name}")
+            return response.text
+        except Exception as e:
+            error_msg = str(e)
+            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                print(f"  ❌ {model_name}: 할당량 초과, 다음 모델 시도...")
+                continue
+            else:
+                raise
+
+    raise RuntimeError("모든 Gemini 모델이 할당량 초과 상태입니다.")
 
 
 # ─── 3. 디스코드 전송 ───
