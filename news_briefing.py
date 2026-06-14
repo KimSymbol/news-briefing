@@ -8,6 +8,7 @@ import re
 import time
 import feedparser
 import requests
+import yfinance as yf
 from datetime import datetime, timedelta, timezone
 from google import genai
 
@@ -174,11 +175,59 @@ def collect_all_news() -> dict:
     return news
 
 
+def fetch_market_data() -> str:
+    """yfinance로 주요 지수/환율 데이터 직접 수집"""
+    tickers = {
+        "코스피": "^KS11",
+        "코스닥": "^KQ11",
+        "S&P 500": "^GSPC",
+        "나스닥": "^IXIC",
+        "다우존스": "^DJI",
+        "원/달러 환율": "KRW=X",
+    }
+
+    lines = []
+    for name, symbol in tickers.items():
+        try:
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="5d")
+            if len(hist) < 2:
+                lines.append(f"• {name}: 데이터 없음")
+                continue
+
+            current = hist["Close"].iloc[-1]
+            prev = hist["Close"].iloc[-2]
+            change = current - prev
+            change_pct = (change / prev) * 100
+            arrow = "▲" if change >= 0 else "▼"
+
+            # 5일 동향
+            first = hist["Close"].iloc[0]
+            trend_change = ((current - first) / first) * 100
+            if abs(trend_change) < 0.3:
+                trend = "보합세"
+            elif trend_change > 0:
+                trend = f"최근 5일 상승 추세 (+{trend_change:.1f}%)"
+            else:
+                trend = f"최근 5일 하락 추세 ({trend_change:.1f}%)"
+
+            if name == "원/달러 환율":
+                lines.append(f"• {name}: {current:,.2f}원 / {arrow}{abs(change):.2f} ({change_pct:+.2f}%) / {trend}")
+            else:
+                lines.append(f"• {name}: {current:,.2f} / {arrow}{abs(change):.2f} ({change_pct:+.2f}%) / {trend}")
+
+        except Exception as e:
+            print(f"  [시장 데이터 오류] {name}: {e}")
+            lines.append(f"• {name}: 데이터 수집 실패")
+
+    return "\n".join(lines)
+
+
 # ═══════════════════════════════════════
 # 2. AI 요약
 # ═══════════════════════════════════════
 
-def summarize_with_gemini(news: dict) -> str:
+def summarize_with_gemini(news: dict, market_data: str) -> str:
     """Gemini API로 뉴스 브리핑 생성"""
 
     # 수집된 뉴스를 텍스트로 변환
@@ -271,15 +320,9 @@ $$SECTION$$
 섹션 7:
 💰 **경제 · 금융**
 
-먼저 아래 시장 요약을 표시 (수집된 뉴스 원문에서 수치를 찾아 작성, 수치가 없으면 해당 항목 생략):
+아래 시장 데이터를 그대로 표시하세요 (이미 수집된 실제 데이터입니다):
 📊 **시장 요약**
-• 코스피: 종가 / 전일 대비 등락(▲▼) / 등락률
-• 코스닥: 종가 / 전일 대비 등락(▲▼) / 등락률
-• S&P 500: 종가 / 전일 대비 등락(▲▼) / 등락률
-• 나스닥: 종가 / 전일 대비 등락(▲▼) / 등락률
-• 다우존스: 종가 / 전일 대비 등락(▲▼) / 등락률
-• 원/달러 환율: 현재가 / 전일 대비 등락 / 최근 동향 한줄
-(⚠️ 원문에 없는 수치는 절대 생성하지 마세요. 없으면 "데이터 없음"으로 표기)
+{market_data}
 
 이후 주요 경제 뉴스 3~5개:
 각 항목: 위와 동일 형식
@@ -433,9 +476,14 @@ def main():
         send_to_discord("⚠️ 오늘은 수집된 뉴스가 없습니다. RSS/API 상태를 확인해 주세요.")
         return
 
+    # 1.5단계: 시장 데이터 수집
+    print("\n[1.5/3] 시장 데이터 수집 중...")
+    market_data = fetch_market_data()
+    print(f"  시장 데이터:\n{market_data}")
+
     # 2단계: AI 요약
     print("\n[2/3] Gemini로 브리핑 생성 중...")
-    briefing = summarize_with_gemini(news)
+    briefing = summarize_with_gemini(news, market_data)
     print(f"  브리핑 생성 완료: {len(briefing)}자")
 
     # 3단계: 디스코드 전송
