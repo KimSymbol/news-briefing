@@ -106,7 +106,6 @@ def collect_all_news() -> dict:
         ("https://feeds.nbcnews.com/nbcnews/public/news/world", "NBC News World"),
         ("https://rss.nytimes.com/services/xml/rss/nyt/World.xml", "NYT World"),
         # 기술/AI
-        ("https://news.hada.io/rss", "GeekNews"),
         ("https://techcrunch.com/feed/", "TechCrunch"),
         ("https://feeds.arstechnica.com/arstechnica/technology-lab", "Ars Technica"),
         # 게임
@@ -115,9 +114,7 @@ def collect_all_news() -> dict:
         ("https://www.gamemeca.com/rss.xml", "게임메카"),
         ("https://store.steampowered.com/feeds/newreleases.xml", "Steam New Releases"),
         # 스포츠
-        ("https://www.espn.com/espn/rss/news", "ESPN"),
         ("https://feeds.bbci.co.uk/sport/rss.xml", "BBC Sport"),
-        ("https://sports.news.naver.com/rss/index.nhn", "네이버 스포츠"),
     ]
 
     news = {
@@ -130,9 +127,9 @@ def collect_all_news() -> dict:
     }
 
     # RSS 수집
-    TECH_SOURCES = {"GeekNews", "TechCrunch", "Ars Technica"}
+    TECH_SOURCES = {"TechCrunch", "Ars Technica"}
     GAME_SOURCES = {"GamesIndustry.biz", "Game Developer", "게임메카", "Steam New Releases"}
-    SPORT_SOURCES = {"ESPN", "BBC Sport", "네이버 스포츠"}
+    SPORT_SOURCES = {"BBC Sport"}
     KR_SOURCES = {"연합뉴스TV"}
     # 나머지는 자동으로 글로벌_종합
 
@@ -291,16 +288,18 @@ $$SECTION$$
 {news_text}
 """
 
-    # 무료 모델 우선순위
+    # 무료 모델 우선순위 (2025.06 기준)
     MODELS = [
         "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-lite",
-        "gemini-1.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-pro",
     ]
 
     client = genai.Client(api_key=GEMINI_API_KEY)
+    # 재시도할 에러 (일시적 과부하)
     RETRYABLE = ["429", "503", "500", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "INTERNAL"]
+    # 재시도 없이 바로 다음 모델로 넘길 에러 (모델 자체가 없음)
+    SKIP = ["404", "NOT_FOUND"]
 
     for model_name in MODELS:
         for attempt in range(2):
@@ -314,6 +313,10 @@ $$SECTION$$
                 return response.text
             except Exception as e:
                 error_msg = str(e)
+                # 모델이 없으면 재시도 없이 바로 다음으로
+                if any(code in error_msg for code in SKIP):
+                    print(f"  ⛔ {model_name}: 모델 없음, 다음으로...")
+                    break
                 is_retryable = any(code in error_msg for code in RETRYABLE)
                 if is_retryable and attempt == 0:
                     print(f"  ⏳ {model_name}: 일시적 오류, 20초 후 재시도...")
