@@ -104,18 +104,20 @@ def collect_all_news() -> dict:
         # 글로벌 종합
         ("https://feeds.bbci.co.uk/news/world/rss.xml", "BBC World"),
         ("https://feeds.nbcnews.com/nbcnews/public/news/world", "NBC News World"),
-        ("https://www3.nhk.or.jp/nhkworld/en/news/list/rss.xml", "NHK World"),
         ("https://rss.nytimes.com/services/xml/rss/nyt/World.xml", "NYT World"),
         # 기술/AI
-        ("https://feeds.feedburner.com/haborymag", "GeekNews"),
+        ("https://news.hada.io/rss", "GeekNews"),
         ("https://techcrunch.com/feed/", "TechCrunch"),
         ("https://feeds.arstechnica.com/arstechnica/technology-lab", "Ars Technica"),
         # 게임
         ("https://www.gamesindustry.biz/feed", "GamesIndustry.biz"),
         ("https://www.gamedeveloper.com/rss.xml", "Game Developer"),
         ("https://www.gamemeca.com/rss.xml", "게임메카"),
-        ("https://www.inven.co.kr/webzine/rss.php", "인벤"),
         ("https://store.steampowered.com/feeds/newreleases.xml", "Steam New Releases"),
+        # 스포츠
+        ("https://www.espn.com/espn/rss/news", "ESPN"),
+        ("https://feeds.bbci.co.uk/sport/rss.xml", "BBC Sport"),
+        ("https://sports.news.naver.com/rss/index.nhn", "네이버 스포츠"),
     ]
 
     news = {
@@ -123,12 +125,14 @@ def collect_all_news() -> dict:
         "글로벌_종합": [],
         "기술_AI": [],
         "게임": [],
+        "스포츠": [],
         "경제": [],
     }
 
     # RSS 수집
     TECH_SOURCES = {"GeekNews", "TechCrunch", "Ars Technica"}
-    GAME_SOURCES = {"GamesIndustry.biz", "Game Developer", "게임메카", "인벤", "Steam New Releases"}
+    GAME_SOURCES = {"GamesIndustry.biz", "Game Developer", "게임메카", "Steam New Releases"}
+    SPORT_SOURCES = {"ESPN", "BBC Sport", "네이버 스포츠"}
     KR_SOURCES = {"연합뉴스TV"}
     # 나머지는 자동으로 글로벌_종합
 
@@ -138,6 +142,8 @@ def collect_all_news() -> dict:
             news["기술_AI"].extend(articles)
         elif label in GAME_SOURCES:
             news["게임"].extend(articles)
+        elif label in SPORT_SOURCES:
+            news["스포츠"].extend(articles)
         elif label in KR_SOURCES:
             news["한국_종합"].extend(articles)
         else:
@@ -152,6 +158,8 @@ def collect_all_news() -> dict:
     news["기술_AI"].extend(fetch_newsapi(query="AI OR OpenAI OR NVIDIA OR Anthropic OR Google AI", language="en"))
     news["게임"].extend(fetch_newsapi(query="게임 출시 OR 게임 업데이트 OR e스포츠 OR 게임 신작", language="ko"))
     news["게임"].extend(fetch_newsapi(query="video game OR game release OR Steam OR PlayStation OR Nintendo OR Xbox OR Unreal Engine OR Unity game", language="en"))
+    news["스포츠"].extend(fetch_newsapi(category="sports", country="kr"))
+    news["스포츠"].extend(fetch_newsapi(category="sports", country="us"))
 
     # 중복 제거
     for key in news:
@@ -200,6 +208,8 @@ def summarize_with_gemini(news: dict) -> str:
 4. 확실하지 않은 정보는 포함하지 말고 "확인 필요"로 표기하세요.
 5. 원문에 링크가 있으면 반드시 포함하세요. 링크를 추측하여 생성하지 마세요.
 6. 중복 기사는 하나로 통합하세요. 동일 뉴스를 여러 섹션에 반복하지 마세요.
+7. 🎮 게임 업계 = 비디오 게임만 포함 (신작, 업데이트, e스포츠, 게임사 실적, 콘솔, Steam). 축구/농구/야구 등 실제 스포츠 경기 결과는 게임이 아닙니다. 스포츠 뉴스는 한국/글로벌 종합에 배치하세요.
+8. 모든 URL은 반드시 <>로 감싸세요. 예: <https://example.com> (디스코드 미리보기 방지)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📋 출력 형식 (디스코드 전송용 — 이 형식을 정확히 따르세요)
@@ -215,7 +225,7 @@ def summarize_with_gemini(news: dict) -> str:
 각 항목:
 > **제목**
 > 한줄 요약 | 왜 중요한가
-> 출처: 매체명 — 링크
+> 출처: 매체명 — <링크>
 
 $$SECTION$$
 
@@ -226,7 +236,7 @@ $$SECTION$$
 **제목**
 • 핵심 내용 2~3줄
 • 영향
-• 출처: 매체명 — 링크
+• 출처: 매체명 — <링크>
 
 $$SECTION$$
 
@@ -246,21 +256,31 @@ $$SECTION$$
 
 섹션 5:
 🎮 **게임 업계**
-(주요 뉴스 3~7개, 없으면 "특이사항 없음")
+(비디오 게임 전용: 신작/업데이트/e스포츠/게임사/콘솔/Steam. 3~7개, 없으면 "특이사항 없음")
 각 항목: 위와 동일 형식
 
 $$SECTION$$
 
 섹션 6:
+⚽ **스포츠**
+(축구/농구/야구 등 주요 스포츠 경기 결과 및 이슈. 간단히 3~5개, 없으면 "특이사항 없음")
+각 항목:
+**제목** — 핵심 결과 한 줄 | 출처: 매체명 — <링크>
+
+$$SECTION$$
+
+섹션 7:
 💰 **경제 · 금융**
 (증시/환율 수치 포함, 3~5개, 없으면 "특이사항 없음")
 각 항목: 위와 동일 형식
 
 $$SECTION$$
 
-섹션 7:
-🎯 **관심 분야** (게임 QA · 자동화 테스트 · AI 활용)
-(관련 뉴스가 있으면 정리, 없으면 "특이사항 없음")
+섹션 8:
+🎯 **관심 분야** (게임 QA · 자동화 테스트)
+(아래 키워드와 직접 관련된 뉴스만 포함. AI 일반 뉴스는 이미 🤖 섹션에 있으므로 여기에 중복하지 마세요.)
+키워드: 게임 QA, 게임 테스트, 자동화 테스트, QA 도구, 테스트 자동화, CI/CD, Selenium, Appium, AltTester, 게임 버그, 품질 보증
+관련 뉴스가 없으면 솔직하게 "특이사항 없음"으로 표기
 
 ✍️ **오늘 꼭 알아야 할 한 문장**
 (전체 뉴스를 한 문장으로 요약)
@@ -410,4 +430,18 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        error_msg = (
+            f"🚨 **뉴스 브리핑 실패**\n"
+            f"시간: {NOW_KST.strftime('%Y-%m-%d %H:%M KST')}\n"
+            f"에러: `{type(e).__name__}: {str(e)[:500]}`\n"
+            f"GitHub Actions 로그를 확인하세요."
+        )
+        print(f"\n!!! 에러 발생: {e}")
+        try:
+            _post_discord(error_msg, 0)
+        except Exception:
+            print("디스코드 에러 알림 전송도 실패했습니다.")
+        raise  # GitHub Actions에서 실패로 표시되도록
