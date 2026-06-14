@@ -116,6 +116,8 @@ def collect_all_news() -> dict:
         ("https://store.steampowered.com/feeds/newreleases.xml", "Steam New Releases"),
         # 스포츠
         ("https://feeds.bbci.co.uk/sport/rss.xml", "BBC Sport"),
+        # 경제
+        ("https://www.mk.co.kr/rss/30000001/", "매일경제"),
     ]
 
     news = {
@@ -131,6 +133,7 @@ def collect_all_news() -> dict:
     TECH_SOURCES = {"TechCrunch", "Ars Technica"}
     GAME_SOURCES = {"GamesIndustry.biz", "Game Developer", "게임메카", "Steam New Releases"}
     SPORT_SOURCES = {"BBC Sport"}
+    ECON_SOURCES = {"매일경제"}
     KR_SOURCES = {"연합뉴스TV"}
     # 나머지는 자동으로 글로벌_종합
 
@@ -142,6 +145,8 @@ def collect_all_news() -> dict:
             news["게임"].extend(articles)
         elif label in SPORT_SOURCES:
             news["스포츠"].extend(articles)
+        elif label in ECON_SOURCES:
+            news["경제"].extend(articles)
         elif label in KR_SOURCES:
             news["한국_종합"].extend(articles)
         else:
@@ -153,6 +158,7 @@ def collect_all_news() -> dict:
     news["경제"].extend(fetch_newsapi(category="business", country="kr"))
     news["경제"].extend(fetch_newsapi(category="business", country="us"))
     news["경제"].extend(fetch_newsapi(query="코스피 OR 코스닥 OR 환율 OR 원달러 OR 증시", language="ko"))
+    news["경제"].extend(fetch_newsapi(query="코스피 상승 OR 코스피 하락 OR 코스닥 상승 OR 코스닥 하락 OR 증시 마감", language="ko"))
     news["경제"].extend(fetch_newsapi(query="S&P 500 OR Nasdaq OR Dow Jones OR stock market", language="en"))
     news["기술_AI"].extend(fetch_newsapi(category="technology"))
     news["기술_AI"].extend(fetch_newsapi(query="AI OR OpenAI OR NVIDIA OR Anthropic OR Google AI", language="en"))
