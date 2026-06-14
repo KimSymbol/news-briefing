@@ -151,6 +151,8 @@ def collect_all_news() -> dict:
     news["글로벌_종합"].extend(fetch_newsapi(country="us"))
     news["경제"].extend(fetch_newsapi(category="business", country="kr"))
     news["경제"].extend(fetch_newsapi(category="business", country="us"))
+    news["경제"].extend(fetch_newsapi(query="코스피 OR 코스닥 OR 환율 OR 원달러 OR 증시", language="ko"))
+    news["경제"].extend(fetch_newsapi(query="S&P 500 OR Nasdaq OR Dow Jones OR stock market", language="en"))
     news["기술_AI"].extend(fetch_newsapi(category="technology"))
     news["기술_AI"].extend(fetch_newsapi(query="AI OR OpenAI OR NVIDIA OR Anthropic OR Google AI", language="en"))
     news["게임"].extend(fetch_newsapi(query="게임 출시 OR 게임 업데이트 OR e스포츠 OR 게임 신작", language="ko"))
@@ -268,7 +270,18 @@ $$SECTION$$
 
 섹션 7:
 💰 **경제 · 금융**
-(증시/환율 수치 포함, 3~5개, 없으면 "특이사항 없음")
+
+먼저 아래 시장 요약을 표시 (수집된 뉴스 원문에서 수치를 찾아 작성, 수치가 없으면 해당 항목 생략):
+📊 **시장 요약**
+• 코스피: 종가 / 전일 대비 등락(▲▼) / 등락률
+• 코스닥: 종가 / 전일 대비 등락(▲▼) / 등락률
+• S&P 500: 종가 / 전일 대비 등락(▲▼) / 등락률
+• 나스닥: 종가 / 전일 대비 등락(▲▼) / 등락률
+• 다우존스: 종가 / 전일 대비 등락(▲▼) / 등락률
+• 원/달러 환율: 현재가 / 전일 대비 등락 / 최근 동향 한줄
+(⚠️ 원문에 없는 수치는 절대 생성하지 마세요. 없으면 "데이터 없음"으로 표기)
+
+이후 주요 경제 뉴스 3~5개:
 각 항목: 위와 동일 형식
 
 $$SECTION$$
