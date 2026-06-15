@@ -159,7 +159,10 @@ def collect_all_news() -> dict:
     news["경제"].extend(fetch_newsapi(category="business", country="us"))
     news["경제"].extend(fetch_newsapi(query="코스피 OR 코스닥 OR 환율 OR 원달러 OR 증시", language="ko"))
     news["경제"].extend(fetch_newsapi(query="코스피 상승 OR 코스피 하락 OR 코스닥 상승 OR 코스닥 하락 OR 증시 마감", language="ko"))
+    news["경제"].extend(fetch_newsapi(query="원달러 환율 상승 OR 원달러 환율 하락 OR 원화 강세 OR 원화 약세 OR 환율 전망", language="ko"))
+    news["경제"].extend(fetch_newsapi(query="코스피 외국인 OR 코스피 기관 OR 증시 전망 OR 증시 급등 OR 증시 급락", language="ko"))
     news["경제"].extend(fetch_newsapi(query="S&P 500 OR Nasdaq OR Dow Jones OR stock market", language="en"))
+    news["경제"].extend(fetch_newsapi(query="Wall Street OR stocks rise OR stocks fall OR market rally OR market drop", language="en"))
     news["기술_AI"].extend(fetch_newsapi(category="technology"))
     news["기술_AI"].extend(fetch_newsapi(query="AI OR OpenAI OR NVIDIA OR Anthropic OR Google AI", language="en"))
     news["게임"].extend(fetch_newsapi(query="게임 출시 OR 게임 업데이트 OR e스포츠 OR 게임 신작", language="ko"))
@@ -326,8 +329,10 @@ $$SECTION$$
 섹션 7:
 💰 **경제 · 금융**
 
-아래는 실제 수집된 시장 데이터입니다. 각 항목 뒤에 수집된 경제 뉴스를 참고하여 **등락 이유를 한 줄**로 추가하세요.
-이유를 알 수 없으면 이유 없이 수치만 표시하세요. 이유를 추측하여 지어내지 마세요.
+아래는 실제 수집된 시장 데이터입니다. **모든 항목**에 수집된 뉴스를 참고하여 등락 이유를 한 줄로 추가하세요.
+한국 증시뿐만 아니라 S&P 500, 나스닥, 다우존스, 환율도 반드시 이유를 찾아 추가하세요.
+같은 이유(예: 이란 평화 협상)가 여러 지수에 해당하면 각각에 적어도 됩니다.
+정말로 관련 뉴스가 전혀 없는 경우에만 이유 없이 수치만 표시하세요.
 
 📊 **시장 요약**
 {market_data}
