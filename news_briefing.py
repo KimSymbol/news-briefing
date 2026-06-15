@@ -17,10 +17,49 @@ DISCORD_WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 NEWSAPI_KEY = os.environ["NEWSAPI_KEY"]
 
+# ─── 날씨 설정 (도시 변경 시 여기만 수정) ───
+WEATHER_CITY = "Daegu"
+
 # ─── 시간 설정 ───
 KST = timezone(timedelta(hours=9))
 NOW_KST = datetime.now(KST)
 YESTERDAY = NOW_KST - timedelta(hours=24)
+
+
+# ═══════════════════════════════════════
+# 0. 날씨 수집
+# ═══════════════════════════════════════
+
+def fetch_weather() -> str:
+    """wttr.in에서 오늘 날씨 가져오기 (API 키 불필요)"""
+    try:
+        url = f"https://wttr.in/{WEATHER_CITY}?format=j1"
+        resp = requests.get(url, timeout=10)
+        data = resp.json()
+
+        current = data["current_condition"][0]
+        today_forecast = data["weather"][0]
+
+        temp = current["temp_C"]
+        feels_like = current["FeelsLikeC"]
+        desc_kr = current.get("lang_ko", [{}])
+        if desc_kr and len(desc_kr) > 0:
+            weather_desc = desc_kr[0].get("value", current["weatherDesc"][0]["value"])
+        else:
+            weather_desc = current["weatherDesc"][0]["value"]
+        humidity = current["humidity"]
+        max_temp = today_forecast["maxtempC"]
+        min_temp = today_forecast["mintempC"]
+        rain_chance = today_forecast.get("hourly", [{}])[4].get("chanceofrain", "0")
+
+        return (
+            f"🌤️ {WEATHER_CITY} 날씨: {temp}°C (체감 {feels_like}°C) / {weather_desc} / "
+            f"최고 {max_temp}°C · 최저 {min_temp}°C / "
+            f"습도 {humidity}% / 강수확률 {rain_chance}%"
+        )
+    except Exception as e:
+        print(f"  [날씨 오류] {e}")
+        return ""
 
 
 # ═══════════════════════════════════════
@@ -170,7 +209,7 @@ def collect_all_news() -> dict:
     news["스포츠"].extend(fetch_newsapi(category="sports", country="kr"))
     news["스포츠"].extend(fetch_newsapi(category="sports", country="us"))
 
-    # 중복 제거
+    # 중복 제거 + 카테고리별 최대 25건 제한
     for key in news:
         seen_titles = set()
         unique = []
@@ -179,7 +218,7 @@ def collect_all_news() -> dict:
             if title_clean not in seen_titles and len(title_clean) > 5:
                 seen_titles.add(title_clean)
                 unique.append(article)
-        news[key] = unique
+        news[key] = unique[:25]
 
     return news
 
@@ -236,7 +275,7 @@ def fetch_market_data() -> str:
 # 2. AI 요약
 # ═══════════════════════════════════════
 
-def summarize_with_gemini(news: dict, market_data: str) -> str:
+def summarize_with_gemini(news: dict, market_data: str, weather: str) -> str:
     """Gemini API로 뉴스 브리핑 생성"""
 
     # 수집된 뉴스를 텍스트로 변환
@@ -264,8 +303,16 @@ def summarize_with_gemini(news: dict, market_data: str) -> str:
 3. 원문의 고유명사를 그대로 사용하세요. 변형·번역·추측하지 마세요.
 4. 확실하지 않은 정보는 포함하지 말고 "확인 필요"로 표기하세요.
 5. 원문에 링크가 있으면 반드시 포함하세요. 링크를 추측하여 생성하지 마세요.
-6. 중복 기사는 하나로 통합하세요. 동일 뉴스를 여러 섹션에 반복하지 마세요.
-7. 🎮 게임 업계 = 비디오 게임만 포함 (신작, 업데이트, e스포츠, 게임사 실적, 콘솔, Steam). 축구/농구/야구 등 실제 스포츠 경기 결과는 게임이 아닙니다. 스포츠 뉴스는 한국/글로벌 종합에 배치하세요.
+6. ⚠️ 중복 금지 (매우 중요):
+   - 하나의 뉴스는 전체 브리핑에서 딱 한 번만 등장해야 합니다.
+   - 🔥 TOP 5에 실린 뉴스는 다른 섹션에 다시 쓰지 마세요.
+   - 같은 사건을 다른 각도로 다룬 기사도 하나로 통합하세요.
+   - 예: "미·이란 평화 협상"이 TOP 5에 있으면, 🌍 글로벌이나 💰 경제에 다시 쓰지 마세요.
+   - 예: "SpaceX IPO"가 TOP 5에 있으면, 💰 경제에 다시 쓰지 마세요. 단, 시장 요약의 등락 이유로 짧게 언급하는 것은 허용.
+7. 🎮 게임 업계 = 비디오 게임만 포함 (신작, 업데이트, e스포츠, 게임사 실적, 콘솔, Steam). 아래는 게임이 아닙니다:
+   - 축구/농구/야구 등 실제 스포츠 → ⚽ 스포츠로
+   - 암호화폐/블록체인/NFT 관련 뉴스 → 💰 경제 또는 제외
+   - 단순히 e스포츠 대회를 언급하지만 실제 내용이 암호화폐인 기사 → 제외
 8. 모든 URL은 반드시 <>로 감싸세요. 예: <https://example.com> (디스코드 미리보기 방지)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -276,6 +323,7 @@ def summarize_with_gemini(news: dict, market_data: str) -> str:
 
 섹션 1:
 📅 **오늘의 브리핑 — {today_str}**
+{weather}
 
 🔥 **핵심 헤드라인 TOP 5**
 (분야·국가 불문 가장 중요한 뉴스 5개)
@@ -354,6 +402,11 @@ $$SECTION$$
 
 ✍️ **오늘 꼭 알아야 할 한 문장**
 (전체 뉴스를 한 문장으로 요약)
+
+📚 **오늘의 용어**
+오늘 브리핑에 등장한 전문용어 중 하나를 골라 짧게 설명하세요.
+형식: 📚 **용어**: 한줄 설명
+(경제, IT, 게임, 국제정치 등 다양한 분야에서 골고루 선택. 매일 다른 용어를 골라주세요.)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 수집된 뉴스 원문
@@ -493,14 +546,16 @@ def main():
         send_to_discord("⚠️ 오늘은 수집된 뉴스가 없습니다. RSS/API 상태를 확인해 주세요.")
         return
 
-    # 1.5단계: 시장 데이터 수집
-    print("\n[1.5/3] 시장 데이터 수집 중...")
+    # 1.5단계: 시장 데이터 + 날씨 수집
+    print("\n[1.5/3] 시장 데이터 + 날씨 수집 중...")
     market_data = fetch_market_data()
     print(f"  시장 데이터:\n{market_data}")
+    weather = fetch_weather()
+    print(f"  날씨: {weather}")
 
     # 2단계: AI 요약
     print("\n[2/3] Gemini로 브리핑 생성 중...")
-    briefing = summarize_with_gemini(news, market_data)
+    briefing = summarize_with_gemini(news, market_data, weather)
     print(f"  브리핑 생성 완료: {len(briefing)}자")
 
     # 3단계: 디스코드 전송
