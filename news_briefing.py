@@ -225,6 +225,8 @@ def collect_all_news() -> dict:
 
 def fetch_market_data() -> str:
     """yfinance로 주요 지수/환율 데이터 직접 수집"""
+    import math
+
     tickers = {
         "코스피": "^KS11",
         "코스닥": "^KQ11",
@@ -238,26 +240,36 @@ def fetch_market_data() -> str:
     for name, symbol in tickers.items():
         try:
             ticker = yf.Ticker(symbol)
-            hist = ticker.history(period="5d")
+            # 10일치 받아서 nan/휴장일 제거 (5일은 연휴 끼면 부족할 수 있음)
+            hist = ticker.history(period="10d")
+            # 종가가 nan인 행 제거
+            hist = hist.dropna(subset=["Close"])
+
             if len(hist) < 2:
                 lines.append(f"• {name}: 데이터 없음")
                 continue
 
             current = hist["Close"].iloc[-1]
             prev = hist["Close"].iloc[-2]
+
+            # nan 최종 검증
+            if math.isnan(current) or math.isnan(prev):
+                lines.append(f"• {name}: 데이터 없음")
+                continue
+
             change = current - prev
             change_pct = (change / prev) * 100
             arrow = "▲" if change >= 0 else "▼"
 
-            # 5일 동향
+            # 동향 (받아온 데이터 첫 값 대비)
             first = hist["Close"].iloc[0]
             trend_change = ((current - first) / first) * 100
             if abs(trend_change) < 0.3:
                 trend = "보합세"
             elif trend_change > 0:
-                trend = f"최근 5일 상승 추세 (+{trend_change:.1f}%)"
+                trend = f"최근 상승 추세 (+{trend_change:.1f}%)"
             else:
-                trend = f"최근 5일 하락 추세 ({trend_change:.1f}%)"
+                trend = f"최근 하락 추세 ({trend_change:.1f}%)"
 
             if name == "원/달러 환율":
                 lines.append(f"• {name}: {current:,.2f}원 / {arrow}{abs(change):.2f} ({change_pct:+.2f}%) / {trend}")
@@ -414,9 +426,12 @@ $$SECTION$$
 {news_text}
 """
 
-    # 무료 모델 우선순위 (2025.06 기준)
+    # 무료 모델 우선순위 (2026.06 기준, 세대 분산으로 과부하 회피)
     MODELS = [
+        "gemini-3.5-flash",
         "gemini-2.5-flash",
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite",
         "gemini-2.5-flash-lite",
         "gemini-2.5-pro",
     ]
@@ -555,14 +570,48 @@ def main():
 
     # 2단계: AI 요약
     print("\n[2/3] Gemini로 브리핑 생성 중...")
-    briefing = summarize_with_gemini(news, market_data, weather)
-    print(f"  브리핑 생성 완료: {len(briefing)}자")
+    try:
+        briefing = summarize_with_gemini(news, market_data, weather)
+        print(f"  브리핑 생성 완료: {len(briefing)}자")
+    except Exception as e:
+        # 모든 Gemini 모델 실패 시 → AI 없이 원본 헤드라인이라도 전송
+        print(f"  ⚠️ AI 요약 실패, 폴백 모드로 전환: {e}")
+        briefing = build_fallback_briefing(news, market_data, weather)
 
     # 3단계: 디스코드 전송
     print("\n[3/3] 디스코드 전송 중...")
     send_to_discord(briefing)
 
     print("\n=== 완료 ===")
+
+
+def build_fallback_briefing(news: dict, market_data: str, weather: str) -> str:
+    """Gemini 실패 시 AI 요약 없이 원본 헤드라인으로 브리핑 구성"""
+    today_str = NOW_KST.strftime("%Y년 %m월 %d일 (%A)")
+
+    parts = [f"📅 **오늘의 브리핑 — {today_str}** (AI 요약 실패, 헤드라인만 전송)\n{weather}"]
+    parts.append(f"📊 **시장 요약**\n{market_data}")
+
+    cat_emoji = {
+        "한국_종합": "🇰🇷 한국 주요 뉴스",
+        "글로벌_종합": "🌍 글로벌 주요 뉴스",
+        "기술_AI": "🤖 AI · IT · 기술",
+        "게임": "🎮 게임 업계",
+        "스포츠": "⚽ 스포츠",
+        "경제": "💰 경제 · 금융",
+    }
+
+    for cat, title in cat_emoji.items():
+        articles = news.get(cat, [])[:7]
+        if not articles:
+            continue
+        section = f"**{title}**\n"
+        for a in articles:
+            section += f"• {a['title']} — <{a['link']}>\n"
+        parts.append(section)
+
+    # $$SECTION$$ 구분자로 합치기 (send_to_discord가 분할)
+    return "\n$$SECTION$$\n".join(parts)
 
 
 if __name__ == "__main__":
